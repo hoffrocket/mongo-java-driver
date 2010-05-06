@@ -3,6 +3,8 @@
 package com.mongodb.util;
 
 import com.mongodb.*;
+import org.bson.types.*;
+
 import java.text.*;
 import java.util.*;
 import java.util.regex.*;
@@ -149,7 +151,7 @@ public class JSON {
         }
 
         if (o instanceof Pattern) {
-            buf.append("/").append(o.toString()).append("/").append(Bytes.patternFlags( ((Pattern)o).flags() ));
+            buf.append("/").append(o.toString()).append("/").append(Bytes.regexFlags( ((Pattern)o).flags() ));
             return;
         }
 
@@ -167,8 +169,8 @@ public class JSON {
             return;
         }
 
-        if ( o instanceof DBTimestamp ){
-            DBTimestamp t = (DBTimestamp)o;
+        if ( o instanceof BSONTimestamp ){
+            BSONTimestamp t = (BSONTimestamp)o;
             buf.append( t.getTime() + "|" + t.getInc() );
             return;
         }
@@ -314,7 +316,7 @@ class JSONParser {
             if ( Character.isWhitespace( current ) ||
                  ! Character.isLetter( current ) )
                 break;
-            flags |= Bytes.getFlag( current );
+            flags |= Bytes.regexFlag( current );
             current = read();
         }
 

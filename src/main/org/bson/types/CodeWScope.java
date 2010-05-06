@@ -1,3 +1,5 @@
+// CodeWScope.java
+
 /**
  *      Copyright (C) 2008 10gen Inc.
  *  
@@ -14,30 +16,31 @@
  *   limitations under the License.
  */
 
+package org.bson.types;
 
-package com.mongodb.util;
+import java.util.*;
 
-import java.util.Map;
+import org.bson.*;
 
-public class MapEntryImpl<K,V> implements Map.Entry<K, V> {
-    
-    public MapEntryImpl(K key, V value) {
-        _key = key;
-        _value = value;
+/** 
+ * for using the CodeWScope type
+ */
+public class CodeWScope {
+
+    public CodeWScope( String code , BSONObject scope ){
+        _code = code;
+        _scope = scope;
     }
-    
-    public K getKey() {
-        return _key;
+
+    public String getCode(){
+        return _code;
     }
-    
-    public V getValue() {
-        return _value;
+
+    public BSONObject getScope(){
+        return _scope;
     }
-    
-    public V setValue(V value) {
-        throw new UnsupportedOperationException();
-    }
-    
-    private final K _key;
-    private V _value;
+
+    final String _code;
+    final BSONObject _scope;
 }
+
