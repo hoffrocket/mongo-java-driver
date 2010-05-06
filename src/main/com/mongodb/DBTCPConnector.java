@@ -115,23 +115,26 @@ class DBTCPConnector implements DBConnector {
         port.checkAuth( db );
 
         try {
-            port.say( m );
-            if ( concern == DB.WriteConcern.STRICT ){
-                DBObject e = _mongo.getDB( "admin" ).getLastError();
-                Object foo = e.get( "err" );
-                if ( foo != null ){
-                    int code = -1;
-                    if ( e.get( "code" ) instanceof Number )
-                        code = ((Number)e.get("code")).intValue();
-                    String s = foo.toString();
-                    if ( code == 11000 || code == 11001 ||
-                         s.startsWith( "E11000" ) ||
-                         s.startsWith( "E11001" ) )
-                        throw new MongoException.DuplicateKey( code , s );
-                    throw new MongoException( code , s );
+        	try {
+                port.say( m );
+                if ( concern == DB.WriteConcern.STRICT ){
+                    DBObject e = _mongo.getDB( "admin" ).getLastError();
+                    Object foo = e.get( "err" );
+                    if ( foo != null ){
+                        int code = -1;
+                        if ( e.get( "code" ) instanceof Number )
+                            code = ((Number)e.get("code")).intValue();
+                        String s = foo.toString();
+                        if ( code == 11000 || code == 11001 ||
+                             s.startsWith( "E11000" ) ||
+                             s.startsWith( "E11001" ) )
+                            throw new MongoException.DuplicateKey( code , s );
+                        throw new MongoException( code , s );
+                    }
                 }
-            }
-            mp.done( port );
+        	} finally {
+        		mp.done( port );
+        	}
         }
         catch ( IOException ioe ){
             mp.error( ioe );
@@ -155,8 +158,13 @@ class DBTCPConnector implements DBConnector {
         port.checkAuth( db );
 
         try {
-            DBMessage res = port.call( m , decoder );
-            mp.done( port );
+        	DBMessage res;
+        	try {
+        		res = port.call( m , decoder );
+        	} finally {
+        		mp.done( port );
+        	}
+            
 
             String err = _getError( in );
 
