@@ -38,8 +38,9 @@ import org.bson.types.ObjectId;
 import org.bson.types.Symbol;
 
 import com.mongodb.ByteDecoder.UseByteDecoder;
-import com.mongodb.Pool.PoolFactory;
-import com.mongodb.Pool.UsePooled;
+import com.mongodb.util.Pool;
+import com.mongodb.util.Pool.PoolFactory;
+import com.mongodb.util.Pool.UsePooled;
 
 /** 
  * Serializes a <code>DBObject</code> into a string that can be sent to the database.

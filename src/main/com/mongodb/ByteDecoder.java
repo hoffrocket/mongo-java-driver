@@ -19,9 +19,10 @@
 package com.mongodb;
 
 import com.mongodb.ByteEncoder.UseByteEncoder;
-import com.mongodb.Pool.PoolFactory;
-import com.mongodb.Pool.UsePooled;
+import com.mongodb.util.Pool;
 import com.mongodb.util.SimplePool;
+import com.mongodb.util.Pool.PoolFactory;
+import com.mongodb.util.Pool.UsePooled;
 
 import java.util.Date;
 import java.util.regex.Pattern;

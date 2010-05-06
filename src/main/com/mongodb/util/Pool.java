@@ -1,7 +1,7 @@
 /**
  * 
  */
-package com.mongodb;
+package com.mongodb.util;
 
 import org.apache.commons.pool.BasePoolableObjectFactory;
 import org.apache.commons.pool.impl.GenericObjectPool;
@@ -11,8 +11,12 @@ public class Pool<T> {
 	private final GenericObjectPool _pool;
 	
 	public Pool(PoolFactory<T> pf, int minSize, int maxSize) {
+		 this(pf, minSize, maxSize, 60000);
+	}
+	
+	public Pool(PoolFactory<T> pf, int minSize, int maxSize, int maxWait) {
 		 _pool = new GenericObjectPool(new Pool.PoolFactoryAdapter<T>(pf), maxSize,GenericObjectPool.WHEN_EXHAUSTED_BLOCK, 
-					60000, minSize, false, false, 0, 0, 0, false);
+					maxWait, minSize, false, false, 0, 0, 0, false);
 	}
 	
 	private final RuntimeException wrap(String message,Exception e) {
@@ -49,7 +53,7 @@ public class Pool<T> {
 		public void reset(T obj);
 	}
 	
-	interface UsePooled<R,T> {
+	public interface UsePooled<R,T> {
 		public R use (T thing) throws Exception;
 	}
 	
