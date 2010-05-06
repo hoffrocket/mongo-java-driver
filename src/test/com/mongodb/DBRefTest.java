@@ -21,6 +21,8 @@ import java.util.*;
 
 import org.testng.annotations.Test;
 
+import com.mongodb.ByteEncoder.UseByteEncoder;
+import com.mongodb.DBApiLayer.SingleResult;
 import com.mongodb.util.*;
 
 import org.bson.*;
@@ -51,42 +53,56 @@ public class DBRefTest extends TestCase {
     @Test(groups = {"basic"})
     public void testDBRef(){
 
-        ByteEncoder encoder = ByteEncoder.get();
+    	ByteEncoder.use(new UseByteEncoder<Void>() {
+
+			@Override
+			public Void use(ByteEncoder encoder) throws Exception {
+		        DBRef ref = new DBRef(_db, "hello", (Object)"world");
+		        DBObject o = new BasicDBObject("!", ref);
+		        
+		        encoder.putObject( o );
+		        
+		        encoder.flip();
+		        
+		        ByteDecoder decoder = new ByteDecoder( encoder._buf );
+		        DBObject read = decoder.readObject();
+		        
+		        String correct = "{\"!\":{\"$ref\":\"hello\",\"$id\":\"world\"}}";
+		        String got = read.toString().replaceAll( " +" , "" );
+		        assertEquals( correct , got );
+				return null;
+			}
+		});
         
-        DBRef ref = new DBRef(_db, "hello", (Object)"world");
-        DBObject o = new BasicDBObject("!", ref);
-        
-        encoder.putObject( o );
-        
-        encoder.flip();
-        
-        ByteDecoder decoder = new ByteDecoder( encoder._buf );
-        DBObject read = decoder.readObject();
-        
-        String correct = "{\"!\":{\"$ref\":\"hello\",\"$id\":\"world\"}}";
-        String got = read.toString().replaceAll( " +" , "" );
-        assertEquals( correct , got );
+
     }
 
     @Test(groups = {"basic"})
     public void testDBRefFetches(){
 
-        ByteEncoder encoder = ByteEncoder.get();
+    	ByteEncoder.use(new UseByteEncoder<Void>() {
+
+			@Override
+			public Void use(ByteEncoder encoder) throws Exception {
+		        BasicDBObject obj = new BasicDBObject("_id", 321325243);
+		        _db.getCollection("x").save(obj);
+
+		        DBRef ref = new DBRef(_db, "x", 321325243);
+		        DBObject deref = ref.fetch();
+
+		        assertTrue(deref != null);
+		        assertEquals(321325243, ((Number)deref.get("_id")).intValue());
+
+		        DBObject refobj = BasicDBObjectBuilder.start().add("$ref", "x").add("$id", 321325243).get();
+		        deref = DBRef.fetch(_db, refobj);
+
+		        assertTrue(deref != null);
+		        assertEquals(321325243, ((Number)deref.get("_id")).intValue());
+				return null;
+			}
+		});
         
-        BasicDBObject obj = new BasicDBObject("_id", 321325243);
-        _db.getCollection("x").save(obj);
 
-        DBRef ref = new DBRef(_db, "x", 321325243);
-        DBObject deref = ref.fetch();
-
-        assertTrue(deref != null);
-        assertEquals(321325243, ((Number)deref.get("_id")).intValue());
-
-        DBObject refobj = BasicDBObjectBuilder.start().add("$ref", "x").add("$id", 321325243).get();
-        deref = DBRef.fetch(_db, refobj);
-
-        assertTrue(deref != null);
-        assertEquals(321325243, ((Number)deref.get("_id")).intValue());
     }
 
     @Test

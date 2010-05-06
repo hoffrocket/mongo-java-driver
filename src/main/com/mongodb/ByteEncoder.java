@@ -24,20 +24,22 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharsetEncoder;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
-import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
-import com.mongodb.util.IdentitySet;
-import com.mongodb.util.SimplePool;
+import org.bson.types.BSONTimestamp;
+import org.bson.types.Binary;
+import org.bson.types.CodeWScope;
+import org.bson.types.ObjectId;
+import org.bson.types.Symbol;
 
-import org.bson.types.*;
+import com.mongodb.ByteDecoder.UseByteDecoder;
+import com.mongodb.Pool.PoolFactory;
+import com.mongodb.Pool.UsePooled;
 
 /** 
  * Serializes a <code>DBObject</code> into a string that can be sent to the database.
@@ -60,34 +62,46 @@ import org.bson.types.*;
 public class ByteEncoder extends Bytes {
 
     static final boolean DEBUG = Boolean.getBoolean( "DEBUG.BE" );
+    
+	static class ByteEncoderFactory implements PoolFactory<ByteEncoder> {
+
+		@Override
+		public ByteEncoder create() {
+			if ( D ) System.out.println( "creating new ByteEncoder" );
+            return new ByteEncoder();
+		}
+
+		@Override
+		public void reset(ByteEncoder obj) {
+			obj.reset();
+		}
+	}
+
 
     
-    /** Fetches a new <code>ByteEncoder</code> from the pool of available <code>ByteEncoder</code>s.
-     * @return a new <code>ByteEncoder</code>
-     */
-    public static ByteEncoder get(){
-        return _pool.get();
-    }
+	interface UseByteEncoder<R> extends UsePooled<R, ByteEncoder> {
+		public R use(ByteEncoder encoder) throws Exception;
+	}
+	
+	static abstract class VoidUseByteEncoder implements UseByteEncoder<Void> {
+		@Override
+		final public Void use(ByteEncoder encoder) throws Exception {
+			u(encoder);
+			return null;
+		}
+		
+		abstract protected void u(ByteEncoder encoder) throws Exception;
+	}
+	
+	
+	public static <R> R use(UseByteEncoder<R> ube) {
+		return _pool.use(ube);
+	}
+	
 
-    /** Resets and returns this encoder to the pool.
-     */
-    protected void done(){
-        reset();
-        _pool.done( this );
-    }
+	private final static Pool<ByteEncoder> _pool = new Pool<ByteEncoder>(new ByteEncoderFactory(), NUM_ENCODERS, NUM_ENCODERS*2);
     
-    final static SimplePool<ByteEncoder> _pool = new SimplePool<ByteEncoder>( "ByteEncoders" , NUM_ENCODERS , NUM_ENCODERS * 2 ){
-            protected ByteEncoder createNew(){
-		if ( D ) System.out.println( "creating new ByteEncoder" );
-                return new ByteEncoder();
-            }
-
-            protected long memSize( ByteEncoder d ){
-                return d._buf.capacity() + ( 2 * MAX_STRING ) + 1024;
-            }
-        };
-
-
+    
     // ----
     
     private ByteEncoder(){

@@ -22,6 +22,10 @@ import java.nio.*;
 import java.util.*;
 import java.util.logging.*;
 
+import com.mongodb.ByteDecoder.UseByteDecoder;
+import com.mongodb.ByteDecoder.VoidUseByteDecoder;
+import com.mongodb.ByteEncoder.VoidUseByteEncoder;
+import com.mongodb.ByteEncoder.UseByteEncoder;
 import com.mongodb.util.*;
 
 import org.bson.*;
@@ -145,7 +149,7 @@ public class DBApiLayer extends DB {
             insert( new DBObject[]{ obj } , shouldApply );
         }
 
-        protected void insert(DBObject[] arr, boolean shouldApply )
+        protected void insert(final DBObject[] arr, boolean shouldApply )
             throws MongoException {
 
             if ( SHOW ) {
@@ -167,65 +171,74 @@ public class DBApiLayer extends DB {
             
             int cur = 0;
             while ( cur < arr.length ){
-                DBMessage m = new DBMessage( 2002 );
-                ByteEncoder encoder = m._encoder;
+            	final int outerCur = cur;
+            	cur = ByteEncoder.use(new UseByteEncoder<Integer>() {
+
+					@Override
+					public Integer use(ByteEncoder encoder) throws Exception {
+						DBMessage m = new DBMessage( 2002, encoder._buf);
+		                
+		                
+		                encoder._buf.putInt( 0 ); // reserved
+		                encoder._put( _fullNameSpace );
+		                int cur = outerCur;
+		                int n=0;
+		                for ( ; cur<arr.length; cur++ ){
+		                    DBObject o = arr[cur];
+		                    int pos = encoder._buf.position();
+		                    try {
+		                        encoder.putObject( null , o );
+		                        n++;
+		                    }
+		                    catch ( BufferOverflowException e ){
+		                        if ( n == 0 )
+		                            throw encoder.getTooLargeException();
+		                        encoder._buf.position( pos );
+		                        break;
+		                    }
+		                }
+		                
+		                
+		                 _connector.say( _db , m , getWriteConcern() );
+						return cur;
+					}
+				});
                 
-                encoder._buf.putInt( 0 ); // reserved
-                encoder._put( _fullNameSpace );
-                
-                int n=0;
-                for ( ; cur<arr.length; cur++ ){
-                    DBObject o = arr[cur];
-                    int pos = encoder._buf.position();
-                    try {
-                        encoder.putObject( null , o );
-                        n++;
-                    }
-                    catch ( BufferOverflowException e ){
-                        if ( n == 0 )
-                            throw encoder.getTooLargeException();
-                        encoder._buf.position( pos );
-                        break;
-                    }
-                }
-                
-                try {
-                    _connector.say( _db , m , getWriteConcern() );
-                }
-                finally {
-                    encoder.done();
-                }
             }
 
         }
         
-        public void remove( DBObject o )
+        public void remove( final DBObject o )
             throws MongoException {
 
             if ( SHOW ) System.out.println( "remove: " + _fullNameSpace + " " + JSON.serialize( o ) );
+            
+            ByteEncoder.use(new VoidUseByteEncoder() {
 
-            DBMessage m = new DBMessage( 2006 );
-            ByteEncoder encoder = m._encoder;
-            encoder._buf.putInt( 0 ); // reserved
-            encoder._put( _fullNameSpace );
+				@Override
+				public void u(ByteEncoder encoder) throws Exception {
+					DBMessage m = new DBMessage( 2006, encoder._buf );
+		            
+		            encoder._buf.putInt( 0 ); // reserved
+		            encoder._put( _fullNameSpace );
 
-            Collection<String> keys = o.keySet();
+		            Collection<String> keys = o.keySet();
 
-            if ( keys.size() == 1 &&
-                 keys.iterator().next().equals( "_id" ) &&
-                 o.get( keys.iterator().next() ) instanceof ObjectId )
-                encoder._buf.putInt( 1 );
-            else
-                encoder._buf.putInt( 0 );
+		            if ( keys.size() == 1 &&
+		                 keys.iterator().next().equals( "_id" ) &&
+		                 o.get( keys.iterator().next() ) instanceof ObjectId )
+		                encoder._buf.putInt( 1 );
+		            else
+		                encoder._buf.putInt( 0 );
 
-            encoder.putObject( o );
+		            encoder.putObject( o );
 
-            try {
-                _connector.say( _db , m , getWriteConcern() );
-            }
-            finally {
-                encoder.done();
-            }
+		            _connector.say( _db , m , getWriteConcern() );
+	
+					
+				}
+			});
+            
         }
 
         void _cleanCursors()
@@ -250,99 +263,111 @@ public class DBApiLayer extends DB {
             }
         }
 
-        void killCursors( List<Long> all )
+        void killCursors( final List<Long> all )
             throws MongoException {
             if ( all == null || all.size() == 0 )
                 return;
+            ByteEncoder.use(new VoidUseByteEncoder() {
 
-            DBMessage m = new DBMessage( 2007 );
-            ByteEncoder encoder = m._encoder;
-            encoder._buf.putInt( 0 ); // reserved
-            
-            encoder._buf.putInt( all.size() );
+				@Override
+				public void u(ByteEncoder encoder) throws Exception {
+		            DBMessage m = new DBMessage( 2007, encoder._buf );
+		            
+		            encoder._buf.putInt( 0 ); // reserved
+		            
+		            encoder._buf.putInt( all.size() );
 
-            for (Long l : all) {
-                encoder._buf.putLong(l);
-            }
+		            for (Long l : all) {
+		                encoder._buf.putLong(l);
+		            }
 
-            try {
-                _connector.say( _db , m , WriteConcern.NONE );
-            }
-            finally {
-                encoder.done();
-            }
+		            _connector.say( _db , m , WriteConcern.NONE );
+	
+					
+				}
+			});
         }
+        
 
-        public Iterator<DBObject> find( DBObject ref , DBObject fields , int numToSkip , int batchSize , int options )
+
+        public Iterator<DBObject> find(  final DBObject ref , final DBObject fields , final int numToSkip , final int batchSize , final int options )
             throws MongoException {
             
-            if ( ref == null )
-                ref = new BasicDBObject();
+            final DBObject finalRef = ref == null ? new BasicDBObject() : ref; 
             
             if ( SHOW ) System.out.println( "find: " + _fullNameSpace + " " + JSON.serialize( ref ) );
 
             _cleanCursors();
+            return ByteEncoder.use(new UseByteEncoder<Result>() {
+
+				@Override
+				public Result use(ByteEncoder encoder) throws Exception {
+		            final DBMessage query = new DBMessage( 2004, encoder._buf );
+		            
+
+		            encoder._buf.putInt( options ); // options
+		            encoder._put( _fullNameSpace );
+
+		            encoder._buf.putInt( numToSkip );
+		            encoder._buf.putInt( batchSize );
+		            encoder.putObject( finalRef ); // ref
+		            if ( fields != null )
+		                encoder.putObject( fields ); // fields to return
+
+		            return ByteDecoder.use(DBApiLayer.this , MyCollection.this, new UseByteDecoder<Result>() {
+
+						@Override
+						public Result use(ByteDecoder decoder) throws Exception {
+							DBMessage response = _connector.call( _db , query , decoder , 2 );
+			                
+			                SingleResult res = new SingleResult( _fullNameSpace , decoder , options );
+
+			                if ( res._lst.size() == 0 )
+			                    return null;
+
+			                if ( res._lst.size() == 1 ){
+			                    Object err = res._lst.get(0).get( "$err" );
+			                    if ( err != null )
+			                        throw new RuntimeException( "db error [" + err + "]" );
+			                }
+
+			                return new Result( MyCollection.this , res , batchSize , options );
+						}
+					});
+				}
+			});
             
-            DBMessage query = new DBMessage( 2004 );
-            ByteEncoder encoder = query._encoder;
 
-            encoder._buf.putInt( options ); // options
-            encoder._put( _fullNameSpace );
-
-            encoder._buf.putInt( numToSkip );
-            encoder._buf.putInt( batchSize );
-            encoder.putObject( ref ); // ref
-            if ( fields != null )
-                encoder.putObject( fields ); // fields to return
-
-            ByteDecoder decoder = ByteDecoder.get( DBApiLayer.this , this );
-
-            try {
-                DBMessage response = _connector.call( _db , query , decoder , 2 );
-                
-                SingleResult res = new SingleResult( _fullNameSpace , decoder , options );
-
-                if ( res._lst.size() == 0 )
-                    return null;
-
-                if ( res._lst.size() == 1 ){
-                    Object err = res._lst.get(0).get( "$err" );
-                    if ( err != null )
-                        throw new RuntimeException( "db error [" + err + "]" );
-                }
-
-                return new Result( this , res , batchSize , options );
-            }
-            finally {
-                decoder.done();
-                encoder.done();
-            }
         }
 
-        public void update( DBObject query , DBObject o , boolean upsert , boolean multi )
+        public void update( final DBObject query , final DBObject o , final boolean upsert , final boolean multi )
             throws MongoException {
 
             if ( SHOW ) System.out.println( "update: " + _fullNameSpace + " " + JSON.serialize( query ) );
 
-            DBMessage m = new DBMessage( 2001 );
-            ByteEncoder encoder = m._encoder;
-            encoder._buf.putInt( 0 ); // reserved
-            encoder._put( _fullNameSpace );
+            ByteEncoder.use(new VoidUseByteEncoder() {
 
-            int flags = 0;
-            if ( upsert ) flags |= 1;
-            if ( multi ) flags |= 2;
-            encoder._buf.putInt( flags );
+				@Override
+				public void u(ByteEncoder encoder) throws Exception {
+		            DBMessage m = new DBMessage( 2001, encoder._buf );
+		            
+		            encoder._buf.putInt( 0 ); // reserved
+		            encoder._put( _fullNameSpace );
 
-            encoder.putObject( query );
-            encoder.putObject( o );
+		            int flags = 0;
+		            if ( upsert ) flags |= 1;
+		            if ( multi ) flags |= 2;
+		            encoder._buf.putInt( flags );
 
-            try {
-                _connector.say( _db , m , getWriteConcern() );
-            }
-            finally {
-                encoder.done();
-            }
+		            encoder.putObject( query );
+		            encoder.putObject( o );
+
+		            _connector.say( _db , m , getWriteConcern() );
+	
+					
+				}
+			});
+
 
         }
 
@@ -500,31 +525,39 @@ public class DBApiLayer extends DB {
 
             if ( _curResult._cursor <= 0 )
                 throw new RuntimeException( "can't advance a cursor <= 0" );
+            ByteEncoder.use(new VoidUseByteEncoder() {
+
+				@Override
+				public void u(ByteEncoder encoder) throws Exception {
+					final DBMessage m = new DBMessage( 2005, encoder._buf );
+		            
+
+		            encoder._buf.putInt( 0 ); 
+		            encoder._put( _curResult._fullNameSpace );
+		            encoder._buf.putInt( _numToReturn ); // num to return
+		            encoder._buf.putLong( _curResult._cursor );
+		            
+		            
+		            ByteDecoder.use(DBApiLayer.this , _collection, new VoidUseByteDecoder() {
+
+						
+						public void u(ByteDecoder decoder) throws Exception {
+							try {
+				                _connector.call( DBApiLayer.this , m , decoder );
+				                _numGetMores++;
+
+				                SingleResult res = new SingleResult( _curResult._fullNameSpace , decoder , _options );
+				                init( res );
+				            }
+				            catch ( MongoException me ){
+				                throw new MongoInternalException( "can't do getmore" , me );
+				            }
+						}
+					});
+		            
+				}
+			});
             
-            DBMessage m = new DBMessage( 2005 );
-            ByteEncoder encoder = m._encoder;
-
-            encoder._buf.putInt( 0 ); 
-            encoder._put( _curResult._fullNameSpace );
-            encoder._buf.putInt( _numToReturn ); // num to return
-            encoder._buf.putLong( _curResult._cursor );
-            
-            ByteDecoder decoder = ByteDecoder.get( DBApiLayer.this , _collection );
-
-            try {
-                _connector.call( DBApiLayer.this , m , decoder );
-                _numGetMores++;
-
-                SingleResult res = new SingleResult( _curResult._fullNameSpace , decoder , _options );
-                init( res );
-            }
-            catch ( MongoException me ){
-                throw new MongoInternalException( "can't do getmore" , me );
-            }
-            finally {
-                decoder.done();
-                encoder.done();
-            }
         }
 
         public void remove(){

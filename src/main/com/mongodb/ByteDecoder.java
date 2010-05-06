@@ -18,6 +18,9 @@
 
 package com.mongodb;
 
+import com.mongodb.ByteEncoder.UseByteEncoder;
+import com.mongodb.Pool.PoolFactory;
+import com.mongodb.Pool.UsePooled;
 import com.mongodb.util.SimplePool;
 
 import java.util.Date;
@@ -32,32 +35,56 @@ import org.bson.types.*;
  */
 public class ByteDecoder extends Bytes {
 
-    /** Gets a new <code>ByteDecoder</code> from the pool.
+
+	static class ByteDecoderFactory implements PoolFactory<ByteDecoder> {
+
+		@Override
+		public ByteDecoder create() {
+			if ( D ) System.out.println( "creating new ByteDecoder" );
+            return new ByteDecoder();
+		}
+
+		@Override
+		public void reset(ByteDecoder obj) {
+			obj.reset();
+		}
+	}
+
+
+    
+	interface UseByteDecoder<R> extends UsePooled<R, ByteDecoder> {
+		public R use(ByteDecoder decoder) throws Exception;
+	}
+	
+	static abstract class VoidUseByteDecoder implements UseByteDecoder<Void> {
+		@Override
+		final public Void use(ByteDecoder decoder) throws Exception {
+			u(decoder);
+			return null;
+		}
+		
+		abstract protected void u(ByteDecoder decoder) throws Exception;
+	}
+	
+	/** Use a new <code>ByteDecoder</code> from the pool.
      * @param base the database
      * @param coll the collection
-     * @return the new <code>ByteDecoder</code>
      */
-    static protected ByteDecoder get( DB base , DBCollection coll ){
-        ByteDecoder bd = _pool.get();
-        bd.reset();
-        bd._base = base;
-        bd._collection = coll;
-        return bd;
-    }
+	public static <R> R use(final DB base , final DBCollection coll, final UseByteDecoder<R> ubd) {
+		
+		return _pool.use(new UseByteDecoder<R>() {
+			@Override
+			public R use(ByteDecoder bd) throws Exception {
+				bd._base = base;
+		        bd._collection = coll;
+				return ubd.use(bd);
+			}
+		});
+	}
+	
 
-    /** Returns this decoder to the pool.
-     */
-    protected void done(){
-        _pool.done( this );
-    }
-
-    final static SimplePool<ByteDecoder> _pool = new SimplePool<ByteDecoder>( "ByteDecoders" , NUM_ENCODERS * 3 , NUM_ENCODERS * 6 ){
-
-        protected ByteDecoder createNew(){
-	    if ( D ) System.out.println( "creating new ByteDecoder" );
-            return new ByteDecoder();
-        }
-    };
+	private final static Pool<ByteDecoder> _pool = new Pool<ByteDecoder>(new ByteDecoderFactory(), NUM_ENCODERS*3, NUM_ENCODERS*6);
+    
 
     // ---
     

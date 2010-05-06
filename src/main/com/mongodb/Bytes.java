@@ -27,6 +27,8 @@ import java.util.logging.*;
 import org.bson.*;
 import org.bson.types.*;
 
+import com.mongodb.ByteEncoder.UseByteEncoder;
+
 /**
  * Handles byte functions for <code>ByteEncoder</code> and <code>ByteDecoder</code>.
  */
@@ -125,12 +127,17 @@ public class Bytes extends BSON {
         return 0;
     }
 
-    public static byte[] encode( DBObject o ){
-        ByteEncoder e = ByteEncoder.get();
-        e.putObject( o );
-        byte b[] = e.getBytes();
-        e.done();
-        return b;
+    public static byte[] encode( final DBObject o ){
+    	return ByteEncoder.use(new UseByteEncoder<byte []>() {
+			@Override
+			public byte [] use(ByteEncoder e) throws Exception {
+		        e.putObject( o );
+		        byte b[] = e.getBytes();
+		        return b;
+			}
+    		
+		});
+
     }
     
     public static DBObject decode( byte[] b ){
