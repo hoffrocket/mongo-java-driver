@@ -1,8 +1,14 @@
 // ReadOplog.java
 
-import com.mongodb.*;
+import org.bson.types.BSONTimestamp;
 
-import java.util.*;
+import com.mongodb.BasicDBObject;
+import com.mongodb.Bytes;
+import com.mongodb.DB;
+import com.mongodb.DBCollection;
+import com.mongodb.DBCursor;
+import com.mongodb.DBObject;
+import com.mongodb.Mongo;
 
 public class ReadOplog {
 
@@ -24,7 +30,7 @@ public class ReadOplog {
             last = lastCursor.next();
         }
         
-        DBTimestamp ts = (DBTimestamp)last.get("ts");
+        BSONTimestamp ts = (BSONTimestamp)last.get("ts");
         System.out.println( "starting point: " + ts );
         
         while ( true ){
@@ -34,7 +40,7 @@ public class ReadOplog {
             cursor.addOption( Bytes.QUERYOPTION_AWAITDATA );
             while ( cursor.hasNext() ){
                 DBObject x = cursor.next();
-                ts = (DBTimestamp)x.get("ts");
+                ts = (BSONTimestamp)x.get("ts");
                 System.out.println( "\t" + x );
             }
             

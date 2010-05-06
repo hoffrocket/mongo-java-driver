@@ -57,7 +57,7 @@ public class QuickTour {
 
         // now, lets add lots of little documents to the collection so we can explore queries and cursors
         for (int i=0; i < 100; i++) {
-            coll.insert(new BasicDBObject().append("i", i));
+            coll.insert((DBObject) new BasicDBObject().append("i", i));
         }
         System.out.println("total # of documents after inserting 100 small ones (should be 101) " + coll.getCount());
 
