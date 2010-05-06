@@ -15,8 +15,9 @@ public class Pool<T> {
 	}
 	
 	public Pool(PoolFactory<T> pf, int minSize, int maxSize, int maxWait) {
+		//run evictor (shrink) thread every two minutes
 		 _pool = new GenericObjectPool(new Pool.PoolFactoryAdapter<T>(pf), maxSize,GenericObjectPool.WHEN_EXHAUSTED_BLOCK, 
-					maxWait, minSize, false, false, 0, 0, 0, false);
+					maxWait, minSize, false, false, 60 * 2 * 1000, 0, -1, false);
 	}
 	
 	private final RuntimeException wrap(String message,Exception e) {
