@@ -18,14 +18,24 @@
 
 package com.mongodb;
 
-import java.util.*;
-import java.util.regex.*;
-import java.util.concurrent.atomic.*;
-import java.nio.*;
-import java.nio.charset.*;
-import java.lang.reflect.Array;
+import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetEncoder;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Stack;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
-import com.mongodb.util.*;
+import com.mongodb.util.IdentitySet;
+import com.mongodb.util.SimplePool;
 
 /** 
  * Serializes a <code>DBObject</code> into a string that can be sent to the database.

@@ -22,7 +22,7 @@ import java.util.*;
 
 public abstract class SimplePool<T> {
 
-    static long _sleepTime = 15;
+	final static long _sleepTime = 15;
     
     /** 
      * See full constructor docs

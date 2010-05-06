@@ -43,7 +43,7 @@ public class DBMessage {
     static AtomicInteger ID = new AtomicInteger(1);
     static int HEADER_LENGTH = 16;
 
-    DBMessage( int operation ){
+	DBMessage( int operation ){
         _len = 0;
         _id = ID.getAndIncrement();
         _responseTo = 0;
@@ -72,13 +72,6 @@ public class DBMessage {
         _encoder = null;
     }
 
-    ByteBuffer forBuilding(){
-        if ( _state != State.BUILDING )
-            throw new IllegalStateException();
-        if ( _buf.position() != HEADER_LENGTH )
-            throw new IllegalStateException();
-        return _buf;
-    }
 
     ByteBuffer prepare(){
         if ( _state == State.SENDING ){
@@ -99,14 +92,6 @@ public class DBMessage {
         return _buf;
     }
 
-    ByteBuffer forReading(){
-        if ( _state != State.READABLE )
-            throw new IllegalStateException();
-        if ( _buf.position() != HEADER_LENGTH )
-            throw new IllegalStateException();
-        _state = State.DONE;
-        return _buf;
-    }
 
 
     public String toString(){
