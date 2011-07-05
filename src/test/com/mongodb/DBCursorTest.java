@@ -121,8 +121,8 @@ public class DBCursorTest extends TestCase {
         assertEquals( numToInsert , c.find().batchSize(2).itcount() );
         assertEquals( numToInsert , c.find().batchSize(1).itcount() );
         
-        assertEquals( numToInsert , _count( c.find( null , null , 0 , 5 ) ) );
-        assertEquals( 5 , _count( c.find( null , null , 0 , -5 ) ) );
+        assertEquals( numToInsert , _count( c.find( null , null).skip(  0 ).batchSize( 5 ) ) );
+        assertEquals( 5 , _count( c.find( null , null).skip(  0 ).batchSize( -5 ) ) );
     }
 
     @SuppressWarnings("unchecked")
@@ -211,6 +211,20 @@ public class DBCursorTest extends TestCase {
     }
 
     @Test
+    public void testLargeBatch(){
+        DBCollection c = _db.getCollection( "largeBatch1" );
+        c.drop();
+
+        int total = 1000000;
+        int batch = 100000;
+        for ( int i=0; i<total; i++ )
+            c.save( new BasicDBObject( "x" , i ) );
+
+        DBCursor cursor = c.find().batchSize( batch );
+        assertEquals( total , cursor.itcount() );
+        assertEquals( total/batch + 1, cursor.getSizes().size());
+    }
+    @Test
     public void testSpecial(){
         DBCollection c = _db.getCollection( "testSpecial" );
         c.insert( new BasicDBObject( "x" , 1 ) );
@@ -226,14 +240,18 @@ public class DBCursorTest extends TestCase {
 
     }
 
-//    @Test
-//    public void testFullRangeCursorIdsOnClose(){
-//        DBCollection c = _db.getCollection( "testCursorIds" );
-//        c.insert( new BasicDBObject( "x" , 1 ) );
-//        
-//        DBCursor curr
-//
-//    }
+    @Test
+    public void testUpsert(){
+        DBCollection c = _db.getCollection( "upsert1" );
+        c.drop();
+
+        c.update( new BasicDBObject( "page" , "/" ), new BasicDBObject( "$inc" , new BasicDBObject( "count" , 1 ) ), true, false );
+        c.update( new BasicDBObject( "page" , "/" ), new BasicDBObject( "$inc" , new BasicDBObject( "count" , 1 ) ), true, false );
+
+        assertEquals( 1, c.getCount() );
+        assertEquals( 2, c.findOne().get( "count" ) );
+    }
+
     @Test
     public void testLimitAndBatchSize() {
         DBCollection c = _db.getCollection( "LimitAndBatchSize" );

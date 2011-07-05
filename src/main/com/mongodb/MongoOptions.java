@@ -18,7 +18,6 @@
 
 package com.mongodb;
 
-import java.net.*;
 
 /**
  * Various settings for the driver
@@ -42,7 +41,7 @@ public class MongoOptions {
         w = 0;
         wtimeout = 0;
         fsync = false;
-        dbCallbackFactory = DefaultDBCallback.FACTORY;
+        dbDecoderFactory = DefaultDBDecoder.FACTORY;
     }
 
     /**
@@ -58,6 +57,11 @@ public class MongoOptions {
         else
             return WriteConcern.NORMAL;
     }
+
+    /**
+     * <p>The description for <code>Mongo</code> instances created with these options. This is used in various places like logging.</p>
+     */
+    public String description;
 
     /**
      * <p>The number of connections allowed per host
@@ -122,7 +126,7 @@ public class MongoOptions {
      * Override the DBCallback factory. Default is for the standard Mongo Java
      * driver configuration.
      */
-    public DBCallbackFactory dbCallbackFactory;
+    public DBDecoderFactory dbDecoderFactory;
 
     /**
      * If <b>true</b> the driver sends a getLastError command after
@@ -159,6 +163,7 @@ public class MongoOptions {
 
     public String toString(){
         StringBuilder buf = new StringBuilder();
+        buf.append( "description=" ).append( description ).append( ", " );
         buf.append( "connectionsPerHost=" ).append( connectionsPerHost ).append( ", " );
         buf.append( "threadsAllowedToBlockForConnectionMultiplier=" ).append( threadsAllowedToBlockForConnectionMultiplier ).append( ", " );
         buf.append( "maxWaitTime=" ).append( maxWaitTime ).append( ", " );

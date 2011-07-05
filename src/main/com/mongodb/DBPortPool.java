@@ -101,7 +101,10 @@ public class DBPortPool extends SimplePool<DBPort> {
         }
 
         private ObjectName createObjectName( ServerAddress addr ) throws MalformedObjectNameException {
-            return new ObjectName( "com.mongodb:type=ConnectionPool,host=" + addr.toString().replace( ":" , ",port=" ) + ",instance=" + hashCode() );
+            String name =  "com.mongodb:type=ConnectionPool,host=" + addr.toString().replace( ":" , ",port=" ) + ",instance=" + hashCode();
+            if ( _options.description != null )
+                name += ",description=" + _options.description;
+            return new ObjectName( name );
         }
 
         final MongoOptions _options;
@@ -187,11 +190,11 @@ public class DBPortPool extends SimplePool<DBPort> {
             return;
         }
         
-        if ( e instanceof java.net.SocketTimeoutException && _options.socketTimeout > 0 ){
-            // we don't want to clear the port pool for 1 connection timing out
+        if ( e instanceof java.net.SocketTimeoutException ){
+            // we don't want to clear the port pool for a connection timing out
             return;
         }
-        Bytes.LOGGER.log( Level.INFO , "emptying DBPortPool b/c of error" , e );
+        Bytes.LOGGER.log( Level.WARNING , "emptying DBPortPool to " + getServerAddress() + " b/c of error" , e );
 
         // force close all sockets 
 

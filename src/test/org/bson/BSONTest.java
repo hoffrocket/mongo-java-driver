@@ -18,14 +18,15 @@
 
 package org.bson;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.*;
 
-import org.bson.io.*;
-import org.bson.types.*;
-import org.testng.annotations.*;
-
+import org.bson.io.BasicOutputBuffer;
+import org.bson.io.OutputBuffer;
+import org.bson.types.CodeWScope;
 import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class BSONTest extends Assert {
 
@@ -50,8 +51,8 @@ public class BSONTest extends Assert {
         assertEquals( hash , buf.md5() );
         e.done();
         
-        BSONDecoder d = new BSONDecoder();
-        BasicBSONCallback cb = new BasicBSONCallback();
+        BSONDecoder d = new BasicBSONDecoder();
+        BSONCallback cb = new BasicBSONCallback();
         int s = d.decode( new ByteArrayInputStream( buf.toByteArray() ) , cb );
         assertEquals( size , s );
 
@@ -128,7 +129,7 @@ public class BSONTest extends Assert {
           data[i] = 1;
         }
         BSONObject binary_object = new BasicBSONObject( "bin" , data);
-        _test( binary_object , 10019 , "682d9a636619b135fa9801ac42c48a10" );
+        _test( binary_object , 10015 , "1d439ba5b959ecfe297a7862bf95bc10" );
     }
 
     @Test
@@ -168,8 +169,8 @@ public class BSONTest extends Assert {
         TestDate td = new TestDate( 2009 , 01 , 23 , 10 , 53 , 42 );
         BSONObject o = new BasicBSONObject( "date" , td );
         BSONEncoder e = new BSONEncoder();
-        BSONDecoder d = new BSONDecoder();
-        BasicBSONCallback cb = new BasicBSONCallback();
+        BSONDecoder d = new BasicBSONDecoder();
+        BSONCallback cb = new BasicBSONCallback();
         OutputBuffer buf = new BasicOutputBuffer();
         e.set( buf );
         boolean encodeFailed = false;
@@ -217,9 +218,9 @@ public class BSONTest extends Assert {
         TestDate td = new TestDate( 2009 , 01 , 23 , 10 , 53 , 42 );
         Date dt = new Date( 2009 , 01 , 23 , 10 , 53 , 42 );
         BSONObject o = new BasicBSONObject( "date" , dt );
-        BSONDecoder d = new BSONDecoder();
+        BSONDecoder d = new BasicBSONDecoder();
         BSONEncoder e = new BSONEncoder();
-        BasicBSONCallback cb = new BasicBSONCallback();
+        BSONCallback cb = new BasicBSONCallback();
         OutputBuffer buf = new BasicOutputBuffer();
         e.set( buf );
         e.putObject( o );

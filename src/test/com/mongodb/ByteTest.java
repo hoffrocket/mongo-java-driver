@@ -18,15 +18,13 @@ package com.mongodb;
 
 import java.io.*;
 import java.util.*;
-import java.util.regex.*;
-import java.io.IOException;
-
-import org.testng.annotations.Test;
-
-import com.mongodb.util.*;
+import java.util.regex.Pattern;
 
 import org.bson.*;
-import org.bson.types.*;
+import org.bson.types.ObjectId;
+import org.testng.annotations.Test;
+
+import com.mongodb.util.TestCase;
 
 
 @SuppressWarnings("unchecked")
@@ -178,10 +176,12 @@ public class ByteTest extends TestCase {
         o.put( "bytes", barray );
 
         byte[] encoded = BSON.encode( o );
-        assertEquals( 277 , encoded.length );
+        assertEquals( 273 , encoded.length );
 
         BSONObject read = BSON.decode( encoded );
         byte[] b = (byte[])read.get( "bytes" );
+        
+        assertEquals(barray.length, b.length);
         for( int i=0; i<256; i++ ) {
             assertEquals( b[i], barray[i] );
         }
@@ -424,7 +424,7 @@ public class ByteTest extends TestCase {
             out.write( b );
         
         ByteArrayInputStream in = new ByteArrayInputStream( out.toByteArray() );
-        BSONDecoder d = new BSONDecoder();
+        BSONDecoder d = new BasicBSONDecoder();
         for ( int i=0; i<n; i++ ){
             BSONObject x = d.readObject( in );
             assertEquals( orig , x );

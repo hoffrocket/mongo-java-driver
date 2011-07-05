@@ -38,9 +38,12 @@ public class ReplicaSetStatus {
         _nextResolveTime = System.currentTimeMillis() + inetAddrCacheMS;
 
         _updater = new Updater();
-        _updater.start();
     }
 
+    void start() {
+        _updater.start();
+    }
+    
     boolean ready(){
         return _setName != null;
     }
@@ -118,6 +121,16 @@ public class ReplicaSetStatus {
         return best._addr;
     }
 
+    boolean hasServerUp() {
+        for (int i = 0; i < _all.size(); i++) {
+            Node n = _all.get(i);
+            if (n._ok) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     class Node {
 
         Node( ServerAddress addr ){
@@ -151,10 +164,12 @@ public class ReplicaSetStatus {
                 _pingTime = _lastCheck - start;
 
                 if ( res == null ){
-                    _ok = false;
-                    return;
+                    throw new MongoInternalException("Invalid null value returned from isMaster");
                 }
 
+                if (!_ok) {
+                    _logger.log( Level.WARNING , "Server seen up: " + _addr );
+                }
                 _ok = true;
                 _isMaster = res.getBoolean( "ismaster" , false );
                 _isSecondary = res.getBoolean( "secondary" , false );
@@ -199,15 +214,12 @@ public class ReplicaSetStatus {
                 }
 
             }
-            catch ( MongoException e ){
-                Throwable root = e;
-                if ( e.getCause() != null )
-                    root = e.getCause();
-                _logger.log( Level.FINE , "node down: " + _addr + " " + root );
-                _ok = false;
-            }
             catch ( Exception e ){
-                _logger.log( Level.SEVERE , "can't update node: " + _addr , e );
+                if (_ok == true) {
+                    _logger.log( Level.WARNING , "Server seen down: " + _addr, e );
+                } else if (Math.random() < 0.1) {
+                    _logger.log( Level.WARNING , "Server seen down: " + _addr );
+                }
                 _ok = false;
             }
 
@@ -237,6 +249,11 @@ public class ReplicaSetStatus {
             return buf.toString();
         }
 
+        public void close() {
+            _port.close();
+            _port = null;
+        }
+        
         final ServerAddress _addr;
         final Set<String> _names = Collections.synchronizedSet( new HashSet<String>() );
         DBPort _port; // we have our own port so we can set different socket options and don't have to owrry about the pool
@@ -298,9 +315,11 @@ public class ReplicaSetStatus {
 
         if ( _lastPrimarySignal != null ){
             n = findNode( _lastPrimarySignal );
-            n.update();
-            if ( n._isMaster )
-                return n;
+            if (n != null) {
+                n.update();
+                if ( n._isMaster )
+                    return n;
+            }
         }
 
         updateAll();
@@ -376,7 +395,12 @@ public class ReplicaSetStatus {
     }
 
     void close(){
-        _closed = true;
+        if (!_closed) {
+            _closed = true;
+            for (int i = 0; i < _all.size(); i++) {
+                _all.get(i).close();
+            }
+        }
     }
 
     /**
@@ -426,6 +450,7 @@ public class ReplicaSetStatus {
         Mongo m = new Mongo( addrs );
 
         ReplicaSetStatus status = new ReplicaSetStatus( m, addrs );
+        status.start();
         System.out.println( status.ensureMaster()._addr );
 
         while ( true ){

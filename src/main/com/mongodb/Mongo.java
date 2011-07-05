@@ -18,12 +18,12 @@
 
 package com.mongodb;
 
-import java.net.*;
+import java.net.UnknownHostException;
 import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-import org.bson.io.*;
+import org.bson.io.PoolOutputBuffer;
 
 /**
  * A database connection with internal pooling.
@@ -103,7 +103,7 @@ public class Mongo {
     /**
      *
      */
-    public static final int MINOR_VERSION = 5;
+    public static final int MINOR_VERSION = 7;
 
     static int cleanerIntervalMS;
     static {
@@ -190,6 +190,7 @@ public class Mongo {
         _options = options;
         _applyMongoOptions();
         _connector = new DBTCPConnector( this , _addr );
+        _connector.start();
         _cleaner = new DBCleanerThread();
         _cleaner.start();
     }
@@ -227,6 +228,7 @@ public class Mongo {
         _options = options;
         _applyMongoOptions();
         _connector = new DBTCPConnector( this , _addrs );
+        _connector.start();
 
         _cleaner = new DBCleanerThread();
         _cleaner.start();
@@ -262,6 +264,7 @@ public class Mongo {
         _options = options;
         _applyMongoOptions();
         _connector = new DBTCPConnector( this , _addrs );
+        _connector.start();
 
         _cleaner = new DBCleanerThread();
         _cleaner.start();
@@ -301,6 +304,7 @@ public class Mongo {
             _connector = new DBTCPConnector( this , replicaSetSeeds );
         }
 
+        _connector.start();
         _cleaner = new DBCleanerThread();
         _cleaner.start();
     }
@@ -444,6 +448,12 @@ public class Mongo {
      */
     public void close(){
         _connector.close();
+        _cleaner.interrupt();
+        try {
+            _cleaner.join();
+        } catch (InterruptedException e) {
+            //end early
+        }
     }
 
     /**
@@ -550,6 +560,55 @@ public class Mongo {
 
     };
 
+    /**
+     * Forces the master server to fsync the RAM data to disk
+     * This is done automatically by the server at intervals, but can be forced for better reliability. 
+     * @param async if true, the fsync will be done asynchronously on the server.
+     * @return 
+     */
+    public CommandResult fsync(boolean async) {
+        DBObject cmd = new BasicDBObject("fsync", 1);
+        if (async) {
+            cmd.put("async", 1);
+        }
+        return getDB("admin").command(cmd);
+    }
+
+    /**
+     * Forces the master server to fsync the RAM data to disk, then lock all writes.
+     * The database will be read-only after this command returns.
+     * @return 
+     */
+    public CommandResult fsyncAndLock() {
+        DBObject cmd = new BasicDBObject("fsync", 1);
+        cmd.put("lock", 1);
+        return getDB("admin").command(cmd);
+    }
+
+    /**
+     * Unlocks the database, allowing the write operations to go through.
+     * This command may be asynchronous on the server, which means there may be a small delay before the database becomes writable.
+     * @return 
+     */
+    public DBObject unlock() {
+        DB db = getDB("admin");
+        DBCollection col = db.getCollection("$cmd.sys.unlock");
+        return col.findOne();
+    }
+
+    /**
+     * Returns true if the database is locked (read-only), false otherwise.
+     * @return 
+     */
+    public boolean isLocked() {
+        DB db = getDB("admin");
+        DBCollection col = db.getCollection("$cmd.sys.inprog");
+        BasicDBObject res = (BasicDBObject) col.findOne();
+        if (res.containsField("fsyncLock")) {
+            return res.getInt("fsyncLock") == 1;
+        }
+        return false;
+    }
 
     // -------
 
@@ -599,9 +658,11 @@ public class Mongo {
             buf.append( uri.getUsername() );
             return buf.toString();
         }
+        
+        public static Holder singleton() { return _default; }
 
-
-        private static final ConcurrentMap<String,Mongo> _mongos = new ConcurrentHashMap<String,Mongo>();
+        private static Holder _default = new Holder();
+        private final ConcurrentMap<String,Mongo> _mongos = new ConcurrentHashMap<String,Mongo>();
 
     }
 
@@ -615,7 +676,11 @@ public class Mongo {
         public void run() {
             while (_connector.isOpen()) {
                 try {
-                    Thread.sleep(cleanerIntervalMS);
+                    try {
+                        Thread.sleep(cleanerIntervalMS);
+                    } catch (InterruptedException e) {
+                        //caused by the Mongo instance being closed -- proceed with cleanup
+                    }
                     for (DB db : _dbs.values()) {
                         db.cleanCursors(true);
                     }

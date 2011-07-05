@@ -17,14 +17,16 @@
 
 package com.mongodb;
 
-import java.io.*;
-import java.nio.*;
+import java.io.IOException;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.regex.*;
+import java.util.regex.Pattern;
 
-import org.bson.*;
+import org.bson.BSON;
+import org.bson.Transformer;
 import org.bson.types.*;
-import org.testng.annotations.*;
+import org.testng.annotations.Test;
 
 import com.mongodb.util.*;
 
@@ -183,12 +185,61 @@ public class JavaClientTest extends TestCase {
             bb.order( Bytes.ORDER );
             bb.putInt( 5 );
             bb.put( "eliot".getBytes() );
-            out.put( "a" , new Binary( (byte)2 , raw ) );
+            out.put( "a" , "eliot".getBytes() );
             c.save( out );
             
             out = c.findOne();
             b = (byte[])(out.get( "a" ) );
             assertEquals( "eliot" , new String( b ) );
+
+            out.put( "a" , new Binary( (byte)111 , raw ) );
+            c.save( out );
+            Binary blah = (Binary)c.findOne().get( "a" );
+            assertEquals( 111 , blah.getType() );
+            assertEquals( Util.toHex( raw ) , Util.toHex( blah.getData() ) );
+        }
+        
+    }
+
+    @Test
+    public void testMinMaxKey()
+        throws MongoException {
+        DBCollection c = _db.getCollection( "testMinMaxKey" );
+        c.drop();
+        c.save( BasicDBObjectBuilder.start().add( "min" , new MinKey() ).add( "max" , new MaxKey() ).get() );
+
+        DBObject out = c.findOne();
+        MinKey min = (MinKey)(out.get( "min" ) );
+        MaxKey max = (MaxKey)(out.get( "max" ) );
+        assertTrue( JSON.serialize(min).contains("$minKey") );
+        assertTrue( JSON.serialize(max).contains("$maxKey") );
+    }
+    
+    @Test
+    public void testBinaryOld()
+        throws MongoException {
+        DBCollection c = _db.getCollection( "testBinary" );
+        c.drop();
+        c.save( BasicDBObjectBuilder.start().add( "a" , "eliot".getBytes() ).get() );
+        
+        DBObject out = c.findOne();
+        byte[] b = (byte[])(out.get( "a" ) );
+        assertEquals( "eliot" , new String( b ) );
+        
+        {
+            byte[] raw = new byte[9];
+            ByteBuffer bb = ByteBuffer.wrap( raw );
+            bb.order( Bytes.ORDER );
+            bb.putInt( 5 );
+            bb.put( "eliot".getBytes() );
+            out.put( "a" , new Binary( BSON.B_BINARY , "eliot".getBytes() ) );
+            c.save( out );
+
+            // objects of subtype B_BINARY or B_GENERAL should becomes byte[]
+            out = c.findOne();
+//            Binary blah = (Binary)(out.get( "a" ) );
+            byte[] bytes = (byte[]) out.get("a");
+            assertEquals( "eliot" , new String( bytes ) );
 
             out.put( "a" , new Binary( (byte)111 , raw ) );
             c.save( out );
@@ -416,7 +467,36 @@ public class JavaClientTest extends TestCase {
         assertEquals( 1 , m.get( "d" ).intValue() );
                         
     }
-    
+
+    @Test
+    public void testMapReduceInlineWScope(){
+        DBCollection c = _db.getCollection( "jmr2" );
+        c.drop();
+
+        c.save( new BasicDBObject( "x" , new String[]{ "a" , "b" } ) );
+        c.save( new BasicDBObject( "x" , new String[]{ "b" , "c" } ) );
+        c.save( new BasicDBObject( "x" , new String[]{ "c" , "d" } ) );
+        
+        Map<String, Object> scope = new HashMap<String, Object>();
+        scope.put("exclude", "a");
+        
+        MapReduceCommand mrc = new MapReduceCommand( c, "function(){ for ( var i=0; i<this.x.length; i++ ){ if(this.x[i] != exclude) emit( this.x[i] , 1 ); } }" ,
+                         "function(key,values){ var sum=0; for( var i=0; i<values.length; i++ ) sum += values[i]; return sum;}" , null, MapReduceCommand.OutputType.INLINE, null);
+        mrc.setScope( scope );
+        
+        MapReduceOutput out = c.mapReduce( mrc );
+        Map<String,Integer> m = new HashMap<String,Integer>();
+        for ( DBObject r : out.results() ){
+            m.put( r.get( "_id" ).toString() , ((Number)(r.get( "value" ))).intValue() );
+        }
+        
+        assertEquals( 3 , m.size() );
+        assertEquals( 2 , m.get( "b" ).intValue() );
+        assertEquals( 2 , m.get( "c" ).intValue() );
+        assertEquals( 1 , m.get( "d" ).intValue() );
+                        
+    }
+
     String _testMulti( DBCollection c ){
         String s = "";
         for ( DBObject z : c.find().sort( new BasicDBObject( "_id" , 1 ) ) ){
@@ -635,7 +715,7 @@ public class JavaClientTest extends TestCase {
         assertEquals( 1 , res.getN() );
         assertFalse( res.isLazy() );
     }
-    
+
     @Test
     public void testWriteResultMethodLevelWriteConcern(){
         DBCollection c = _db.getCollection( "writeresult2" );
@@ -756,7 +836,14 @@ public class JavaClientTest extends TestCase {
         DBObject b = c.findOne();
         assertTrue(a.equals(b));
     }
+    
+    @Test
+    public void testMongoHolder() throws MongoException, UnknownHostException {
+        Mongo m1 = Mongo.Holder.singleton().connect( new MongoURI( "mongodb://localhost" ) );
+        Mongo m2 = Mongo.Holder.singleton().connect( new MongoURI( "mongodb://localhost" ) );
 
+        assertEquals( m1, m2);
+    }
     final Mongo _mongo;
     final DB _db;
 

@@ -2,12 +2,12 @@
 
 package com.mongodb.util;
 
-import java.lang.reflect.*;
-import java.text.*;
+import java.lang.reflect.Array;
+import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.regex.*;
+import java.util.regex.Pattern;
 
-import org.bson.*;
+import org.bson.BSONCallback;
 import org.bson.types.*;
 
 import com.mongodb.*;
@@ -218,7 +218,16 @@ public class JSON {
             serialize( temp, buf );
             return;
         }
-        
+
+        if ( o instanceof MinKey ){
+            serialize( new BasicDBObject("$minKey", 1), buf );
+            return;
+        }
+        if ( o instanceof MaxKey ){
+            serialize( new BasicDBObject("$maxKey", 1), buf );
+            return;
+        }
+
         throw new RuntimeException( "json can't serialize type : " + o.getClass() );
     }
 
@@ -584,7 +593,11 @@ class JSONParser {
 
         if (isDouble)
           return Double.valueOf(s.substring(start, pos));
-        return Long.valueOf(s.substring(start, pos));
+        
+        Long val = Long.valueOf(s.substring(start, pos));
+        if (val <= Integer.MAX_VALUE)
+            return val.intValue();
+        return val;
     }
 
     /** 

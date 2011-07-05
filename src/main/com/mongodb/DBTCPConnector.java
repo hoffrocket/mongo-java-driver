@@ -65,6 +65,11 @@ public class DBTCPConnector implements DBConnector {
 
         _createLogger.info( all  + " -> " + getAddress() );
     }
+    
+    public void start() {
+        if (_rsStatus != null)
+            _rsStatus.start();
+    }
 
     private static ServerAddress _checkAddress( ServerAddress addr ){
         if ( addr == null )
@@ -277,13 +282,28 @@ public class DBTCPConnector implements DBConnector {
         return master != null ? master.toString() : null;
     }
 
+    /**
+     * This method is called in case of an IOException.
+     * It will potentially trigger a checkMaster() to check the status of all servers.
+     * @param t the exception thrown
+     * @param slaveOk slaveOk flag
+     * @return true if the request should be retried, false otherwise
+     * @throws MongoException
+     */
     boolean _error( Throwable t, boolean slaveOk )
         throws MongoException {
-        if ( _allHosts != null ){
-            _logger.log( Level.WARNING , "replica set mode, switching master" , t );
+        if (_rsStatus == null) {
+            // single server, no need to retry
+            return false;
+        }
+
+        // the replset has at least 1 server up, try to see if should switch master
+        // if no server is up, we wont retry until the updater thread finds one
+        // this is to cut down the volume of requests/errors when all servers are down
+        if ( _rsStatus.hasServerUp() ){
             checkMaster( true , !slaveOk );
         }
-        return true;
+        return _rsStatus.hasServerUp();
     }
 
     class MyPort {
@@ -348,7 +368,10 @@ public class DBTCPConnector implements DBConnector {
         void error( DBPort p , Exception e ){
             p.close();
             _requestPort = null;
-            _logger.log( Level.SEVERE , "MyPort.error called" , e );            
+//            _logger.log( Level.SEVERE , "MyPort.error called" , e );
+
+            // depending on type of error, may need to close other connections in pool
+            p.getPool().gotError(e);
         }
         
         void requestEnsureConnection(){
@@ -439,7 +462,13 @@ public class DBTCPConnector implements DBConnector {
     }
 
     private boolean _set( ServerAddress addr ){
-        _masterPortPool = _portHolder.get( addr );
+        DBPortPool newPool = _portHolder.get( addr );
+        if (newPool == _masterPortPool)
+            return false;
+
+        if ( _logger.isLoggable( Level.WARNING ) && _masterPortPool != null )
+            _logger.log(Level.WARNING, "Master switching from " + _masterPortPool.getServerAddress() + " to " + addr);
+        _masterPortPool = newPool;
         return true;
     }
 
@@ -457,11 +486,18 @@ public class DBTCPConnector implements DBConnector {
     
     public void close(){
         _closed = true;
-        if ( _portHolder != null )
+        if ( _portHolder != null ) {
             _portHolder.close();
-        if ( _rsStatus != null )
+            _portHolder = null;
+        }
+        if ( _rsStatus != null ) {
             _rsStatus.close();
-        _myPort = null;
+            _rsStatus = null;
+        }
+
+        // below this will remove the myport for this thread only
+        // client using thread pool in web framework may need to call close() from all threads
+        _myPort.remove();
     }
 
     /**
@@ -502,7 +538,7 @@ public class DBTCPConnector implements DBConnector {
     private DBPortPool _masterPortPool;
     private DBPortPool.Holder _portHolder;
     private final List<ServerAddress> _allHosts;
-    private final ReplicaSetStatus _rsStatus;
+    private ReplicaSetStatus _rsStatus;
     private boolean _closed = false;
     private int maxBsonObjectSize = 0;
 

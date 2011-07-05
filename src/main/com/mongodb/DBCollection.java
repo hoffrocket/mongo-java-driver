@@ -19,11 +19,9 @@
 package com.mongodb;
 
 // Mongo
-import org.bson.types.*;
-import com.mongodb.util.*;
-
-// Java
 import java.util.*;
+
+import org.bson.types.ObjectId;
 
 /** This class provides a skeleton implementation of a database collection.  
  * <p>A typical invocation sequence is thus
@@ -214,6 +212,7 @@ public abstract class DBCollection {
      * @throws MongoException
      * @dochub find
      */
+    @Deprecated
     public final DBCursor find( DBObject query , DBObject fields , int numToSkip , int batchSize , int options ) throws MongoException{
     	return find(query, fields, numToSkip, batchSize).addOption(options);
     }
@@ -232,8 +231,9 @@ public abstract class DBCollection {
      * @throws MongoException
      * @dochub find
      */
-    public final DBCursor find( DBObject ref , DBObject fields , int numToSkip , int batchSize ) {
-    	DBCursor cursor = find(ref, fields).skip(numToSkip).batchSize(batchSize);
+    @Deprecated
+    public final DBCursor find( DBObject query , DBObject fields , int numToSkip , int batchSize ) {
+    	DBCursor cursor = find(query, fields).skip(numToSkip).batchSize(batchSize);
     	return cursor;
     }
 
@@ -556,9 +556,7 @@ public abstract class DBCollection {
      */
     public final DBObject findOne( DBObject o, DBObject fields ) {
         Iterator<DBObject> i = __find( o , fields , 0 , -1 , 0, getOptions() );
-        if ( i == null || ! i.hasNext() )
-            return null;
-        return i.next();
+        return i == null ? null : i.next();
     }
 
     /**
@@ -1271,6 +1269,14 @@ public abstract class DBCollection {
     public int getOptions(){
         return _options.get();
     }
+
+    public void setDBDecoderFactory(DBDecoderFactory dbDecoderFactory) {
+        this.dbDecoderFactory = dbDecoderFactory;
+    }
+
+    public DBDecoderFactory getDBDecoderFactory() {
+        return dbDecoderFactory;
+    }
     
     final DB _db;
 
@@ -1286,4 +1292,6 @@ public abstract class DBCollection {
     private ReflectionDBObject.JavaWrapper _wrapper = null;
 
     final private Set<String> _createdIndexes = new HashSet<String>();
+    
+    private DBDecoderFactory dbDecoderFactory;
 }

@@ -2,20 +2,21 @@
 
 package org.bson;
 
-import com.mongodb.DBRef;
-import com.mongodb.DBRefBase;
 import static org.bson.BSON.*;
 
-import java.lang.reflect.*;
-import java.nio.*;
-import java.nio.charset.*;
+import java.lang.reflect.Array;
+import java.nio.Buffer;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.atomic.*;
-import java.util.regex.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
-import org.bson.io.*;
+import org.bson.io.BasicOutputBuffer;
+import org.bson.io.OutputBuffer;
 import org.bson.types.*;
+
+import com.mongodb.DBRefBase;
 
 /**
  * this is meant to be pooled or cached
@@ -206,6 +207,10 @@ public class BSONEncoder {
             temp.put("$id", ((DBRefBase)val).getId());
             putObject( name, temp );
         }
+        else if ( val instanceof MinKey )
+            putMinKey( name );
+        else if ( val instanceof MaxKey )
+            putMaxKey( name );
         else if ( putSpecial( name , val ) ){
             // no-op
         }
@@ -318,23 +323,28 @@ public class BSONEncoder {
     }
     
     protected void putBinary( String name , byte[] data ){
+        putBinary( name, B_GENERAL, data );
+    }
+    
+    protected void putBinary( String name , Binary val ){
+        putBinary( name, val.getType(), val.getData() );        
+    }
+    
+    private void putBinary( String name , int type , byte[] data ){
         _put( BINARY , name );
-        _buf.writeInt( 4 + data.length );
-
-        _buf.write( B_BINARY );
-        _buf.writeInt( data.length );
+        int totalLen = data.length;
+        
+        if (type == B_BINARY)
+            totalLen += 4;
+        
+        _buf.writeInt( totalLen );
+        _buf.write( type );
+        if (type == B_BINARY)
+            _buf.writeInt( totalLen -4 );
         int before = _buf.getPosition();
         _buf.write( data );
         int after = _buf.getPosition();
-        
         com.mongodb.util.MyAsserts.assertEquals( after - before , data.length );
-    }
-
-    protected void putBinary( String name , Binary val ){
-        _put( BINARY , name );
-        _buf.writeInt( val.length() );
-        _buf.write( val.getType() );
-        _buf.write( val.getData() );
     }
     
     protected void putUUID( String name , UUID val ){
@@ -370,6 +380,14 @@ public class BSONEncoder {
         _put( REGEX , name );
         _put( p.pattern() );
         _put( regexFlags( p.flags() ) );
+    }
+
+    private void putMinKey( String name ) {
+        _put( MINKEY , name );
+    }
+
+    private void putMaxKey( String name ) {
+        _put( MAXKEY , name );
     }
 
 
