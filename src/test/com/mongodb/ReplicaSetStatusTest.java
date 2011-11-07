@@ -18,41 +18,51 @@ package com.mongodb;
 
 import org.testng.annotations.Test;
 
-import com.mongodb.ReplicaSetStatus.Node;
-
 
 import com.mongodb.util.TestCase;
 
 import java.util.*;
 
-/**
- * This is a placeholder. A node needs to be able to be created outside of ReplicaSetStatus.
- */
+
 public class ReplicaSetStatusTest extends TestCase {
 
     @Test
-    public void testFindASecondary() throws Exception {
+    public void testFindASecondary() {
 
-        //final List<Node> nodes = new ArrayList<Node>();
+        TestNode node1 = new TestNode(false, 1.0f);
+        TestNode node2 = new TestNode(true, 1.0f);
+        TestNode node3 = new TestNode(true, 1.0f);
+        List<TestNode> nodes = Arrays.asList(node1, node2, node3);
+        
+        ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
+        
+        assertNotNull(strat.select(null, null, nodes));
+    }
+    
+    static class TestNode implements ReplicaSetNode {
+        private final boolean _secondary;
+        private final float _pingTime;
+        
+        public TestNode(boolean secondary, float pingTime) {
+            this._secondary = secondary;
+            this._pingTime = pingTime;
+        }
 
-        //final Node node1 = new Node(new ServerAddress("127.0.0.1", 27017));
+        @Override
+        public boolean secondary() {
+            return _secondary;
+        }
 
-        /*
-        boolean _ok = false;
-        long _lastCheck = 0;
-        float _pingTime = 0;
+        @Override
+        public boolean checkTag(String key, String value) {
+            return false;
+        }
 
-        boolean _isMaster = false;
-        boolean _isSecondary = false;
-
-        double _priority = 0;
-
-
-
-        final Random random = new Random();
-
-        final ServerAddress addr = ReplicaSetStatus.getASecondary( null, null, nodes, random);
-        */
+        @Override
+        public float getPingTime() {
+            return _pingTime;
+        }
+        
     }
 }
 
