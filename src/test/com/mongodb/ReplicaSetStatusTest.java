@@ -39,6 +39,41 @@ public class ReplicaSetStatusTest extends TestCase {
         assertNotNull(strat.select(null, null, nodes));
     }
     
+    @Test
+    public void testEvenDistribution() {
+
+        TestNode node1 = new TestNode(false, 1.0f);
+        TestNode node2 = new TestNode(true, 1.0f);
+        TestNode node3 = new TestNode(true, 1.0f);
+        List<TestNode> nodes = Arrays.asList(node1, node2, node3);
+        
+        ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
+        Map<TestNode, Float> expected = new HashMap<TestNode, Float>();
+        expected.put(node2, .5f);
+        expected.put(node3, .5f);
+        assertSelectionDistribution(expected, strat, nodes);
+    }
+    
+    public void assertSelectionDistribution(Map<TestNode, Float> expected, ReplicaSetSecondaryStrategy strat, List<TestNode> nodes) {
+        int iterations = 10000;
+        int fudgePercent = 2;
+        Map<TestNode, Integer> histogram = new HashMap<TestNode, Integer>();
+        for (int i = 0; i < iterations; i++) {
+            TestNode winner = strat.select(null, null, nodes);
+            Integer currentCount = histogram.get(winner);
+            Integer newCount = (currentCount == null ? 0 : currentCount) + 1;
+            histogram.put(winner, newCount);
+        }
+        System.out.println(histogram);
+        for (Map.Entry<TestNode, Float> entry : expected.entrySet()) {
+            Integer count = histogram.get(entry.getKey());
+            assertNotNull(count);
+            int expectedPercent = Math.round((entry.getValue() * iterations)/100);
+            int actualPercent = (int)Math.round(((100.0 * count) / iterations));
+            assertTrue(Math.abs(expectedPercent - actualPercent) < fudgePercent);
+        }
+    }
+    
     static class TestNode implements ReplicaSetNode {
         private final boolean _secondary;
         private final float _pingTime;
