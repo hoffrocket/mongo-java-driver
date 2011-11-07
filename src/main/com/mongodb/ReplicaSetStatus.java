@@ -61,6 +61,7 @@ public class ReplicaSetStatus {
         _nextResolveTime = System.currentTimeMillis() + inetAddrCacheMS;
 
         _updater = new Updater();
+        _secondaryStrategy = new DefaultReplicaSetSecondaryStrategy(slaveAcceptableLatencyMS);
     }
 
     void start() {
@@ -153,62 +154,63 @@ public class ReplicaSetStatus {
      */
     public ServerAddress getASecondary( String tagKey, String tagValue ) {
         _checkClosed();
-        return getASecondary(tagKey, tagValue, _all, _random);
-    }
-
-    /**
-     * This was extracted so we can test the logic from a unit test. This can't be
-     * tested from a standalone unit test until node is more decoupled from this class.
-     *
-     * @return a good secondary or null if can't find one
-     */
-    static ServerAddress getASecondary( final String pTagKey,
-                                        final String pTagValue,
-                                        final List<Node> pNodes,
-                                        final Random pRandom)
-    {
-        Node best = null;
-        double badBeforeBest = 0;
-
-        if (pTagKey == null && pTagValue != null || pTagValue == null & pTagKey != null)
-           throw new IllegalArgumentException( "Tag Key & Value must be consistent: both defined or not defined." );
-
-        int start = pRandom.nextInt( pNodes.size() );
-
-        final int nodeCount = pNodes.size();
-
-        double mybad = 0;
-
-        for ( int i=0; i < nodeCount; i++ ){
-            Node n = pNodes.get( ( start + i ) % nodeCount );
-
-            if ( ! n.secondary() ){
-                mybad++;
-                continue;
-            } else if (pTagKey != null && !n.checkTag( pTagKey, pTagValue )){
-                mybad++;
-                continue;
-            }
-
-            if ( best == null ){
-                best = n;
-                badBeforeBest = mybad;
-                mybad = 0;
-                continue;
-            }
-
-            float diff = best._pingTime - n._pingTime;
-
-            // this is a complex way to make sure we get a random distribution of slaves
-            if ( diff > slaveAcceptableLatencyMS || ( ( badBeforeBest - mybad ) / ( nodeCount  - 1 ) ) > pRandom.nextDouble() && diff > -1*slaveAcceptableLatencyMS ) {
-                best = n;
-                badBeforeBest = mybad;
-                mybad = 0;
-            }
-
-        }
-
+        Node best = _secondaryStrategy.select(tagKey, tagValue, _all);
         return ( best != null ) ? best._addr : null;
+    }
+    
+    public static class DefaultReplicaSetSecondaryStrategy implements ReplicaSetSecondaryStrategy {
+        private final Random _random = new Random();
+        private final long acceptibleLatencyMS;
+        
+        public DefaultReplicaSetSecondaryStrategy(long acceptibleLatencyMS) {
+            this.acceptibleLatencyMS = acceptibleLatencyMS;
+        }
+        
+        @Override
+        public <T extends ReplicaSetNode> T select(String pTagKey, String pTagValue, List<T> pNodes) {
+            T best = null;
+            double badBeforeBest = 0;
+
+            if (pTagKey == null && pTagValue != null || pTagValue == null & pTagKey != null)
+               throw new IllegalArgumentException( "Tag Key & Value must be consistent: both defined or not defined." );
+
+            int start = _random.nextInt( pNodes.size() );
+
+            final int nodeCount = pNodes.size();
+
+            double mybad = 0;
+
+            for ( int i=0; i < nodeCount; i++ ){
+                T n = pNodes.get( ( start + i ) % nodeCount );
+
+                if ( ! n.secondary() ){
+                    mybad++;
+                    continue;
+                } else if (pTagKey != null && !n.checkTag( pTagKey, pTagValue )){
+                    mybad++;
+                    continue;
+                }
+
+                if ( best == null ){
+                    best = n;
+                    badBeforeBest = mybad;
+                    mybad = 0;
+                    continue;
+                }
+
+                float diff = best.getPingTime() - n.getPingTime();
+
+                // this is a complex way to make sure we get a random distribution of slaves
+                if ( diff > acceptibleLatencyMS || ( ( badBeforeBest - mybad ) / ( nodeCount  - 1 ) ) > _random.nextDouble() && diff > -1*acceptibleLatencyMS ) {
+                    best = n;
+                    badBeforeBest = mybad;
+                    mybad = 0;
+                }
+                
+            }
+            return best;
+        }
+        
     }
 
     boolean hasServerUp() {
@@ -224,7 +226,7 @@ public class ReplicaSetStatus {
     /**
      * The replica set node object.
      */
-    public class Node {
+    public class Node implements ReplicaSetNode {
 
         Node( ServerAddress addr ){
             _addr = addr;
@@ -384,6 +386,10 @@ public class ReplicaSetStatus {
         public void close() {
             _port.close();
             _port = null;
+        }
+        
+        public float getPingTime() {
+            return _pingTime;
         }
 
         final ServerAddress _addr;
@@ -559,7 +565,8 @@ public class ReplicaSetStatus {
     String _lastPrimarySignal;
     boolean _closed = false;
 
-    final Random _random = new Random();
+    
+    final ReplicaSetSecondaryStrategy _secondaryStrategy;
     long _nextResolveTime;
 
     static int updaterIntervalMS;
