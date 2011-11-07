@@ -29,10 +29,10 @@ public class ReplicaSetStatusTest extends TestCase {
     @Test
     public void testFindASecondary() {
 
-        TestNode node1 = new TestNode(false, 1.0f);
-        TestNode node2 = new TestNode(true, 1.0f);
-        TestNode node3 = new TestNode(true, 1.0f);
-        List<TestNode> nodes = Arrays.asList(node1, node2, node3);
+        TestNode master = new TestNode("master", false, 1.0f);
+        TestNode node2 = new TestNode("node2", true, 1.0f);
+        TestNode node3 = new TestNode("node3", true, 1.0f);
+        List<TestNode> nodes = Arrays.asList(master, node2, node3);
         
         ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
         
@@ -42,15 +42,34 @@ public class ReplicaSetStatusTest extends TestCase {
     @Test
     public void testEvenDistribution() {
 
-        TestNode node1 = new TestNode(false, 1.0f);
-        TestNode node2 = new TestNode(true, 1.0f);
-        TestNode node3 = new TestNode(true, 1.0f);
-        List<TestNode> nodes = Arrays.asList(node1, node2, node3);
+        TestNode master = new TestNode("master", false, 1.0f);
+        TestNode node2 = new TestNode("node2", true, 1.0f);
+        TestNode node3 = new TestNode("node3", true, 1.0f);
+        List<TestNode> nodes = Arrays.asList(master, node2, node3);
         
         ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
         Map<TestNode, Float> expected = new HashMap<TestNode, Float>();
+        expected.put(master, 0.0f);
         expected.put(node2, .5f);
         expected.put(node3, .5f);
+        assertSelectionDistribution(expected, strat, nodes);
+    }
+    
+    @Test
+    public void testEvenDistributionWithSlowNode() {
+
+        TestNode master = new TestNode("master", false, 1.0f);
+        TestNode node2 = new TestNode("node2", true, 1.0f);
+        TestNode node3 = new TestNode("node3", true, 1.0f);
+        TestNode node4 = new TestNode("node4", true, 10.0f);
+        List<TestNode> nodes = Arrays.asList(master, node2, node3, node4);
+        
+        ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
+        Map<TestNode, Float> expected = new HashMap<TestNode, Float>();
+        expected.put(master, 0.0f);
+        expected.put(node2, .5f);
+        expected.put(node3, .5f);
+        expected.put(node4, 0.0f);
         assertSelectionDistribution(expected, strat, nodes);
     }
     
@@ -67,18 +86,19 @@ public class ReplicaSetStatusTest extends TestCase {
         System.out.println(histogram);
         for (Map.Entry<TestNode, Float> entry : expected.entrySet()) {
             Integer count = histogram.get(entry.getKey());
-            assertNotNull(count);
             int expectedPercent = Math.round((entry.getValue() * iterations)/100);
-            int actualPercent = (int)Math.round(((100.0 * count) / iterations));
-            assertTrue(Math.abs(expectedPercent - actualPercent) < fudgePercent);
+            int actualPercent = count == null ? 0 : (int)Math.round(((100.0 * count) / iterations));
+            assertTrue(Math.abs(expectedPercent - actualPercent) < fudgePercent, String.format("%s seen %d%% but expected %d%%", entry.getKey(), actualPercent, expectedPercent));
         }
     }
     
     static class TestNode implements ReplicaSetNode {
+        private final String _name;
         private final boolean _secondary;
         private final float _pingTime;
         
-        public TestNode(boolean secondary, float pingTime) {
+        public TestNode(String name, boolean secondary, float pingTime) {
+            this._name = name;
             this._secondary = secondary;
             this._pingTime = pingTime;
         }
@@ -96,6 +116,10 @@ public class ReplicaSetStatusTest extends TestCase {
         @Override
         public float getPingTime() {
             return _pingTime;
+        }
+        
+        public String toString() {
+            return "Node("+_name +","+_secondary+","+_pingTime+")";
         }
         
     }
