@@ -25,16 +25,16 @@ import java.util.*;
 
 
 public class ReplicaSetStatusTest extends TestCase {
-
+    
     @Test
     public void testFindASecondary() {
 
-        TestNode master = new TestNode("master", false, 1.0f);
-        TestNode node2 = new TestNode("node2", true, 1.0f);
-        TestNode node3 = new TestNode("node3", true, 1.0f);
+        TestNode master = new TestNode("master", false, 1.0f, 0);
+        TestNode node2 = new TestNode("node2", true, 1.0f, 0);
+        TestNode node3 = new TestNode("node3", true, 1.0f, 0);
         List<TestNode> nodes = Arrays.asList(master, node2, node3);
         
-        ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
+        ReplicaSetSecondaryStrategy strat = new DefaultReplicaSetSecondaryStrategy(2);
         
         assertNotNull(strat.select(null, null, nodes));
     }
@@ -42,12 +42,12 @@ public class ReplicaSetStatusTest extends TestCase {
     @Test
     public void testEvenDistribution() {
 
-        TestNode master = new TestNode("master", false, 1.0f);
-        TestNode node2 = new TestNode("node2", true, 1.0f);
-        TestNode node3 = new TestNode("node3", true, 1.0f);
+        TestNode master = new TestNode("master", false, 1.0f, 0);
+        TestNode node2 = new TestNode("node2", true, 1.0f, 0);
+        TestNode node3 = new TestNode("node3", true, 1.0f, 0);
         List<TestNode> nodes = Arrays.asList(master, node2, node3);
         
-        ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
+        ReplicaSetSecondaryStrategy strat = new DefaultReplicaSetSecondaryStrategy(2);
         Map<TestNode, Float> expected = new HashMap<TestNode, Float>();
         expected.put(master, 0.0f);
         expected.put(node2, .5f);
@@ -56,20 +56,44 @@ public class ReplicaSetStatusTest extends TestCase {
     }
     
     @Test
-    public void testEvenDistributionWithSlowNode() {
+    public void testDefaultEvenDistributionWithSlowNode() {
 
-        TestNode master = new TestNode("master", false, 1.0f);
-        TestNode node2 = new TestNode("node2", true, 1.0f);
-        TestNode node3 = new TestNode("node3", true, 1.0f);
-        TestNode node4 = new TestNode("node4", true, 10.0f);
+        ReplicaSetSecondaryStrategy strat = new DefaultReplicaSetSecondaryStrategy(2);
+        assertEvenDistributionWithSlowNode(strat);
+    }
+    
+    @Test
+    public void testQueueingNodesAreBad() {
+
+        ReplicaSetSecondaryStrategy strat = new NoQueueStrategy(2, 0);
+        TestNode master = new TestNode("master", false, 1.0f, 0);
+        TestNode node2 = new TestNode("node2", true, 1.0f, 0);
+        TestNode node3 = new TestNode("node3", true, 1.0f, 0);
+        TestNode node4 = new TestNode("node4", true, 1.0f, 100);
         List<TestNode> nodes = Arrays.asList(master, node2, node3, node4);
         
-        ReplicaSetSecondaryStrategy strat = new ReplicaSetStatus.DefaultReplicaSetSecondaryStrategy(2);
         Map<TestNode, Float> expected = new HashMap<TestNode, Float>();
         expected.put(master, 0.0f);
         expected.put(node2, .5f);
         expected.put(node3, .5f);
         expected.put(node4, 0.0f);
+        assertSelectionDistribution(expected, strat, nodes);
+    }
+
+    private void assertEvenDistributionWithSlowNode(ReplicaSetSecondaryStrategy strat) {
+        TestNode master = new TestNode("master", false, 1.0f, 0);
+        TestNode node2 = new TestNode("node2", true, 1.0f, 0);
+        TestNode node3 = new TestNode("node3", true, 1.0f, 0);
+        TestNode node4 = new TestNode("node4", true, 1.0f, 0);
+        TestNode node5 = new TestNode("node5", true, 10.0f, 0);
+        List<TestNode> nodes = Arrays.asList(master, node2, node3, node4);
+        
+        Map<TestNode, Float> expected = new HashMap<TestNode, Float>();
+        expected.put(master, 0.0f);
+        expected.put(node2, .33f);
+        expected.put(node3, .33f);
+        expected.put(node4, 0.33f);
+        expected.put(node5, 0.0f);
         assertSelectionDistribution(expected, strat, nodes);
     }
     
@@ -96,11 +120,13 @@ public class ReplicaSetStatusTest extends TestCase {
         private final String _name;
         private final boolean _secondary;
         private final float _pingTime;
-        
-        public TestNode(String name, boolean secondary, float pingTime) {
+        private final int _queueSize;
+
+        public TestNode(String name, boolean secondary, float pingTime, int queueSize) {
             this._name = name;
             this._secondary = secondary;
             this._pingTime = pingTime;
+            this._queueSize = queueSize;
         }
 
         @Override
@@ -119,7 +145,12 @@ public class ReplicaSetStatusTest extends TestCase {
         }
         
         public String toString() {
-            return "Node("+_name +","+_secondary+","+_pingTime+")";
+            return "Node("+_name +","+_secondary+","+_pingTime+","+_queueSize+")";
+        }
+
+        @Override
+        public int getQueueSize() {
+            return _queueSize;
         }
         
     }

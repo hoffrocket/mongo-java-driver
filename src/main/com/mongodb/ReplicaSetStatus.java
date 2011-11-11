@@ -27,7 +27,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -61,7 +60,7 @@ public class ReplicaSetStatus {
         _nextResolveTime = System.currentTimeMillis() + inetAddrCacheMS;
 
         _updater = new Updater();
-        _secondaryStrategy = new DefaultReplicaSetSecondaryStrategy(slaveAcceptableLatencyMS);
+        _secondaryStrategy = new NoQueueStrategy(slaveAcceptableLatencyMS, 10);
     }
 
     void start() {
@@ -158,61 +157,6 @@ public class ReplicaSetStatus {
         return ( best != null ) ? best._addr : null;
     }
     
-    public static class DefaultReplicaSetSecondaryStrategy implements ReplicaSetSecondaryStrategy {
-        private final Random _random = new Random();
-        private final long acceptibleLatencyMS;
-        
-        public DefaultReplicaSetSecondaryStrategy(long acceptibleLatencyMS) {
-            this.acceptibleLatencyMS = acceptibleLatencyMS;
-        }
-        
-        @Override
-        public <T extends ReplicaSetNode> T select(String pTagKey, String pTagValue, List<T> pNodes) {
-            T best = null;
-            double badBeforeBest = 0;
-
-            if (pTagKey == null && pTagValue != null || pTagValue == null & pTagKey != null)
-               throw new IllegalArgumentException( "Tag Key & Value must be consistent: both defined or not defined." );
-
-            int start = _random.nextInt( pNodes.size() );
-
-            final int nodeCount = pNodes.size();
-
-            double mybad = 0;
-
-            for ( int i=0; i < nodeCount; i++ ){
-                T n = pNodes.get( ( start + i ) % nodeCount );
-
-                if ( ! n.secondary() ){
-                    mybad++;
-                    continue;
-                } else if (pTagKey != null && !n.checkTag( pTagKey, pTagValue )){
-                    mybad++;
-                    continue;
-                }
-
-                if ( best == null ){
-                    best = n;
-                    badBeforeBest = mybad;
-                    mybad = 0;
-                    continue;
-                }
-
-                float diff = best.getPingTime() - n.getPingTime();
-
-                // this is a complex way to make sure we get a random distribution of slaves
-                if ( diff > acceptibleLatencyMS || ( ( badBeforeBest - mybad ) / ( nodeCount  - 1 ) ) > _random.nextDouble() && diff > -1*acceptibleLatencyMS ) {
-                    best = n;
-                    badBeforeBest = mybad;
-                    mybad = 0;
-                }
-                
-            }
-            return best;
-        }
-        
-    }
-
     boolean hasServerUp() {
         for (int i = 0; i < _all.size(); i++) {
             Node n = _all.get(i);
@@ -254,7 +198,7 @@ public class ReplicaSetStatus {
         synchronized void update(Set<Node> seenNodes){
             try {
                 long start = System.currentTimeMillis();
-                CommandResult res = _port.runCommand( _mongo.getDB("admin") , _isMasterCmd );
+                CommandResult res = _port.runCommand( _mongo.getDB("admin") , _serverStatusCommand );
                 boolean first = (_lastCheck == 0);
                 _lastCheck = System.currentTimeMillis();
                 float newPing = _lastCheck - start;
@@ -265,19 +209,31 @@ public class ReplicaSetStatus {
                 _rootLogger.log( Level.FINE , "Latency to " + _addr + " actual=" + newPing + " smoothed=" + _pingTime );
 
                 if ( res == null ){
-                    throw new MongoInternalException("Invalid null value returned from isMaster");
+                    throw new MongoInternalException("Invalid null value returned from serverStatus");
+                }
+
+                BasicDBObject replRes = (BasicDBObject)res.get("repl");
+                if ( replRes == null ) {
+                    // TODO(jon) is this safe? maybe not for legacy master-slave or replica-pairs? 
+                    // default to master if not a repl set
+                    replRes = new BasicDBObject("ismaster", true);
                 }
 
                 if (!_ok) {
                     _logger.log( Level.INFO , "Server seen up: " + _addr );
                 }
-                _ok = true;
-                _isMaster = res.getBoolean( "ismaster" , false );
-                _isSecondary = res.getBoolean( "secondary" , false );
-                _lastPrimarySignal = res.getString( "primary" );
+                
+                if ( res.containsField("globalLock") ) {
+                    _queueSize = ((BasicDBObject)((BasicDBObject)res.get("globalLock")).get("currentQueue")).getInt("total");
+                }
 
-                if ( res.containsField( "hosts" ) ){
-                    for ( Object x : (List)res.get("hosts") ){
+                _ok = true;
+                _isMaster = replRes.getBoolean( "ismaster" , false );
+                _isSecondary = replRes.getBoolean( "secondary" , false );
+                _lastPrimarySignal = replRes.getString( "primary" );
+
+                if ( replRes.containsField( "hosts" ) ){
+                    for ( Object x : (List)replRes.get("hosts") ){
                         String host = x.toString();
                         Node node = _addIfNotHere(host);
                         if (node != null && seenNodes != null)
@@ -285,8 +241,8 @@ public class ReplicaSetStatus {
                     }
                 }
 
-                if ( res.containsField( "passives" ) ){
-                    for ( Object x : (List)res.get("passives") ){
+                if ( replRes.containsField( "passives" ) ){
+                    for ( Object x : (List)replRes.get("passives") ){
                         String host = x.toString();
                         Node node = _addIfNotHere(host);
                         if (node != null && seenNodes != null)
@@ -295,8 +251,8 @@ public class ReplicaSetStatus {
                 }
 
                 // Tags were added in 2.0 but may not be present
-                if (res.containsField( "tags" )) {
-                    DBObject tags = (DBObject) res.get( "tags" );
+                if (replRes.containsField( "tags" )) {
+                    DBObject tags = (DBObject) replRes.get( "tags" );
                     for ( String key : tags.keySet() ) {
                         _tags.put( key, tags.get( key ).toString() );
                     }
@@ -304,14 +260,14 @@ public class ReplicaSetStatus {
 
                 if (_isMaster ) {
                     // max size was added in 1.8
-                    if (res.containsField("maxBsonObjectSize"))
-                        maxBsonObjectSize = ((Integer)res.get( "maxBsonObjectSize" )).intValue();
+                    if (replRes.containsField("maxBsonObjectSize"))
+                        maxBsonObjectSize = ((Integer)replRes.get( "maxBsonObjectSize" )).intValue();
                     else
                         maxBsonObjectSize = Bytes.MAX_OBJECT_SIZE;
                 }
 
-                if (res.containsField("setName")) {
-	                String setName = res.get( "setName" ).toString();
+                if (replRes.containsField("setName")) {
+	                String setName = replRes.get( "setName" ).toString();
 	                if ( _setName == null ){
 	                    _setName = setName;
 	                    _logger = Logger.getLogger( _rootLogger.getName() + "." + setName );
@@ -353,7 +309,7 @@ public class ReplicaSetStatus {
             buf.append( "Replica Set Node: " ).append( _addr ).append( "\n" );
             buf.append( "\t ok \t" ).append( _ok ).append( "\n" );
             buf.append( "\t ping \t" ).append( _pingTime ).append( "\n" );
-
+            buf.append( "\t queueSize \t" ).append(_queueSize).append( "\n" );
             buf.append( "\t master \t" ).append( _isMaster ).append( "\n" );
             buf.append( "\t secondary \t" ).append( _isSecondary ).append( "\n" );
 
@@ -391,6 +347,11 @@ public class ReplicaSetStatus {
         public float getPingTime() {
             return _pingTime;
         }
+        
+        @Override
+        public int getQueueSize() {
+            return _queueSize;
+        }
 
         final ServerAddress _addr;
         final Set<String> _names = Collections.synchronizedSet( new HashSet<String>() );
@@ -405,6 +366,8 @@ public class ReplicaSetStatus {
         boolean _isSecondary = false;
 
         double _priority = 0;
+        int _queueSize = 0;
+
     }
 
     class Updater extends Thread {
@@ -586,7 +549,7 @@ public class ReplicaSetStatus {
         _mongoOptionsDefaults.socketTimeout = Integer.parseInt(System.getProperty("com.mongodb.updaterSocketTimeoutMS", "20000"));
     }
 
-    static final DBObject _isMasterCmd = new BasicDBObject( "ismaster" , 1 );
+    private static final DBObject _serverStatusCommand = new BasicDBObject( "serverStatus" , 1 );
 
     public static void main( String args[] )
         throws Exception {
