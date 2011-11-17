@@ -60,7 +60,8 @@ public class ReplicaSetStatus {
         _nextResolveTime = System.currentTimeMillis() + inetAddrCacheMS;
 
         _updater = new Updater();
-        _secondaryStrategy = new NoQueueStrategy(slaveAcceptableLatencyMS, 10);
+        _secondaryStrategy = useNoQueueSecondarySelection ? new NoQueueStrategy(slaveAcceptableLatencyMS, 10) 
+                                : new DefaultReplicaSetSecondaryStrategy(slaveAcceptableLatencyMS);
     }
 
     void start() {
@@ -536,6 +537,7 @@ public class ReplicaSetStatus {
     static int slaveAcceptableLatencyMS;
     static int inetAddrCacheMS;
     static float latencySmoothFactor;
+    static boolean useNoQueueSecondarySelection;
 
     final MongoOptions _mongoOptions;
     static final MongoOptions _mongoOptionsDefaults = new MongoOptions();
@@ -545,6 +547,7 @@ public class ReplicaSetStatus {
         slaveAcceptableLatencyMS = Integer.parseInt(System.getProperty("com.mongodb.slaveAcceptableLatencyMS", "15"));
         inetAddrCacheMS = Integer.parseInt(System.getProperty("com.mongodb.inetAddrCacheMS", "300000"));
         latencySmoothFactor = Float.parseFloat(System.getProperty("com.mongodb.latencySmoothFactor", "4"));
+        useNoQueueSecondarySelection = Boolean.parseBoolean(System.getProperty("com.mongodb.noQueueSecondarySelection"));
         _mongoOptionsDefaults.connectTimeout = Integer.parseInt(System.getProperty("com.mongodb.updaterConnectTimeoutMS", "20000"));
         _mongoOptionsDefaults.socketTimeout = Integer.parseInt(System.getProperty("com.mongodb.updaterSocketTimeoutMS", "20000"));
     }
